@@ -1,0 +1,815 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TempoTracer</title>
+<link rel="manifest" href="./manifest.webmanifest">
+<meta name="theme-color" content="#111015">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="icon" href="./icon-192.png">
+<style>
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#101010;color:#f3f3f3;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;user-select:none}
+.app{width:min(780px,94vw);text-align:center}
+h1{font-size:23px;font-weight:600;margin:0 0 18px}
+.tempo{font-size:clamp(72px,15vw,110px);font-weight:750;font-variant-numeric:tabular-nums;line-height:1;cursor:pointer;display:inline-block;padding:4px 18px;border-radius:14px}
+.tempo:hover{background:#181818}
+.label{margin-top:5px;opacity:.42;letter-spacing:.16em;font-size:12px}.round-bpm{padding:3px 7px;margin-left:7px;border-radius:6px;font-size:10px;letter-spacing:.04em;vertical-align:1px}
+.candidate{height:24px;margin-top:9px;font-size:14px;opacity:.58}.lock-indicator{height:18px;font-size:11px;letter-spacing:.08em;opacity:.28;margin-bottom:4px}.lock-indicator.on{opacity:.82}
+.track{position:relative;height:56px;margin:27px 15px 30px}
+.track-line{position:absolute;left:0;right:0;top:50%;height:2px;background:#444}
+.edge{position:absolute;top:calc(50% - 8px);width:2px;height:18px;background:#777}.edge.left{left:0}.edge.right{right:0}
+.dot{position:absolute;left:0;top:50%;width:24px;height:24px;border-radius:50%;background:#fff;box-shadow:0 0 20px rgba(255,255,255,.65);transform:translate(-50%,-50%);opacity:.25}.running .dot{opacity:1}
+.tempo-control{display:grid;grid-template-columns:64px 1fr 64px;gap:12px;align-items:center}.step-stack{display:grid;gap:7px}
+input[type=range]{width:100%;cursor:pointer}
+button{border:1px solid #555;background:#222;color:#eee;border-radius:10px;padding:14px 12px;font:inherit;cursor:pointer;touch-action:manipulation}
+button:hover{background:#2a2a2a}button:active{background:#444}
+.step{font-size:25px;padding:8px}
+.limits{margin:4px 69px 0;display:flex;justify-content:space-between;opacity:.34;font-size:11px}
+.buttons{display:grid;grid-template-columns:1.65fr 1fr 1fr;gap:10px;margin-top:28px}.buttons #sync{grid-column:1/-1;width:100%;font-size:24px;font-weight:800;padding:20px 12px}.buttons #new{font-size:19px;font-weight:800;padding:17px 12px}#sync.flash,#new.flash{background:#eee;color:#111}#stop{background:#2b1d1d}.credit{margin:24px 0 8px;font-size:11px;opacity:.28}
+.status{min-height:25px;margin-top:18px;font-size:14px;opacity:.68}
+.help{margin-top:20px;font-size:12px;line-height:1.65;opacity:.34}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.72);display:none;align-items:center;justify-content:center;padding:20px}.modal.open{display:flex}
+.pad{width:min(360px,94vw);background:#191919;border:1px solid #444;border-radius:18px;padding:20px}
+.pad-title{font-size:13px;opacity:.55;margin-bottom:8px}.entry{font-size:54px;font-weight:700;min-height:70px;font-variant-numeric:tabular-nums}
+.keypad{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}.keypad button{font-size:22px;padding:16px 8px}
+.keypad .zero{grid-column:2}.pad-actions{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:12px}
+
+/* v16 phone-first: everything stays inside one browser viewport */
+html,body{width:100%;height:100%;overflow:hidden}
+body{min-height:100dvh;height:100dvh;padding:max(6px,env(safe-area-inset-top)) max(8px,env(safe-area-inset-right)) max(6px,env(safe-area-inset-bottom)) max(8px,env(safe-area-inset-left))}
+.app{width:min(780px,100%);height:100%;max-height:100dvh;display:flex;flex-direction:column;justify-content:center}
+.buttons #sync{
+  min-height:86px;font-size:30px;letter-spacing:.16em;
+  border:1px solid #888;border-radius:16px;
+  background:linear-gradient(180deg,#303030,#1c1c1c);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.12),0 5px 18px rgba(0,0,0,.28);
+}
+.buttons #sync:active{background:#e8e8e8;color:#111;transform:translateY(1px)}
+@media(max-width:600px){
+ h1{font-size:16px;margin:0 0 3px}
+ .lock-indicator{height:14px;font-size:9px;margin:0}
+ .tempo{font-size:clamp(54px,19vw,78px);padding:0 12px}
+ .label{margin-top:0;font-size:9px}.round-bpm{padding:2px 6px;font-size:9px}
+ .candidate{height:18px;margin-top:2px;font-size:11px}
+ .track{height:35px;margin:7px 10px 9px}
+ .dot{width:19px;height:19px}
+ .tempo-control{grid-template-columns:54px 1fr 54px;gap:7px}
+ .step-stack{gap:4px}.step{font-size:18px;padding:5px 4px;border-radius:8px}
+ .limits{margin:2px 59px 0;font-size:9px}
+ .buttons{grid-template-columns:1.5fr 1fr 1fr;gap:6px;margin-top:8px}
+ .buttons button{padding:9px 5px;font-size:11px;border-radius:9px}
+ .buttons #new{font-size:16px;padding:11px 5px}
+ .buttons #sync{min-height:82px;font-size:29px;padding:15px 8px;border-radius:15px}
+ .status{min-height:17px;margin-top:5px;font-size:10px;line-height:1.2}
+ .help{margin-top:3px;font-size:9px;line-height:1.15}
+ .credit{margin:4px 0 0;font-size:9px}
+}
+@media(max-width:600px) and (max-height:700px){
+ h1{display:none}.help{display:none}
+ .tempo{font-size:52px}.track{height:27px;margin:4px 10px 6px}
+ .buttons #sync{min-height:66px;font-size:25px}
+ .buttons{margin-top:5px}.status{margin-top:3px}.credit{margin-top:2px}
+}
+
+
+/* v17: performance controls occupy the lower half of a phone display */
+@media(max-width:600px){
+ .app{justify-content:flex-start}
+ .buttons{
+   position:absolute;
+   left:max(8px,env(safe-area-inset-left));
+   right:max(8px,env(safe-area-inset-right));
+   bottom:max(7px,env(safe-area-inset-bottom));
+   height:calc(50dvh - max(7px,env(safe-area-inset-bottom)));
+   display:grid;
+   grid-template-columns:1.5fr 1fr 1fr;
+   grid-template-rows:1fr 1fr;
+   gap:7px;
+   margin:0;
+ }
+ .buttons #new,.buttons #stop,.buttons #mute{
+   height:100%;min-height:0;
+   font-size:clamp(14px,4vw,19px);
+ }
+ .buttons #new{font-size:clamp(18px,5vw,24px)}
+ .buttons #sync{
+   grid-column:1/-1;
+   grid-row:2;
+   width:100%;height:100%;min-height:0;
+   font-size:clamp(30px,9vw,44px);
+   letter-spacing:.18em;
+   border-radius:18px;
+ }
+ /* Upper metronome area gets exactly the remaining half viewport. */
+ h1{font-size:18px;margin:0 0 2px}
+ .tempo{font-size:clamp(48px,17vw,72px)}
+ .track{height:30px;margin:5px 10px 6px}
+ .tempo-control{margin-top:0}
+ .status{margin-top:3px}
+ .help{display:none}
+ .credit{
+   position:fixed;right:13px;bottom:4px;z-index:5;
+   margin:0;font-size:8px;pointer-events:none;
+ }
+}
+
+
+/* v18 phone layout refinements */
+.bpm-row{display:grid;grid-template-columns:64px 1fr 64px;align-items:center;gap:8px}
+.phase-nudge{
+  appearance:none;border:1px solid #555;background:#191919;color:#eee;
+  border-radius:12px;font-size:20px;font-weight:800;padding:13px 4px;
+  touch-action:manipulation;
+}
+.phase-nudge:active{background:#eee;color:#111}
+@media(max-width:600px){
+ h1{display:block !important;position:relative;z-index:2;font-size:19px;margin:0 0 2px}
+ .bpm-row{grid-template-columns:58px 1fr 58px;gap:6px}
+ .phase-nudge{font-size:17px;padding:12px 2px;border-radius:11px}
+ .tempo{font-size:clamp(46px,16vw,70px);padding:0 2px}
+ .tempo-control{
+   position:absolute;
+   left:max(8px,env(safe-area-inset-left));
+   right:max(8px,env(safe-area-inset-right));
+   bottom:calc(50dvh + 7px);
+   z-index:3;
+   margin:0;
+ }
+ .limits{display:none}
+ .buttons{top:auto}
+}
+@media(max-width:600px) and (max-height:700px){
+ h1{display:block !important;font-size:16px;margin:0}
+ .bpm-row{grid-template-columns:50px 1fr 50px}
+ .phase-nudge{font-size:15px;padding:8px 1px}
+ .tempo{font-size:46px}
+}
+
+
+/* v19: full-screen phone controls, slider removed, bigger phase arrows */
+.modal{z-index:9999!important}
+.bpm-row{grid-template-columns:82px 1fr 82px}
+.phase-nudge{font-size:26px;min-height:64px}
+.tempo-control{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.tempo-control .step{font-size:23px;min-height:55px}
+.buttons{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));grid-template-rows:1fr 1.25fr;gap:8px}
+.buttons #mute,.buttons #stop,.buttons #corr{grid-column:span 2}
+.buttons #new,.buttons #sync{grid-column:span 3}
+@media(max-width:600px){
+ .bpm-row{grid-template-columns:clamp(64px,19vw,90px) 1fr clamp(64px,19vw,90px)}
+ .phase-nudge{font-size:clamp(21px,6vw,29px);min-height:64px;padding:10px 2px}
+ .tempo-control{bottom:calc(50dvh + 7px);grid-template-columns:repeat(4,minmax(0,1fr));gap:7px}
+ .tempo-control .step{min-height:58px;font-size:clamp(20px,6vw,27px)}
+ .buttons{grid-template-columns:repeat(6,minmax(0,1fr));grid-template-rows:1fr 1.25fr}
+ .buttons #mute,.buttons #stop,.buttons #corr{grid-column:span 2;height:100%;font-size:clamp(13px,3.7vw,18px)}
+ .buttons #new,.buttons #sync{grid-column:span 3;grid-row:2;height:100%;min-height:0;font-size:clamp(25px,7vw,38px)}
+ .buttons #sync{width:100%}
+}
+
+/* v20 · graphite and steel blue, restrained warm orange */
+:root{color-scheme:dark}
+html,body{background:#10151a!important;color:#e3e6e8}
+body{background:linear-gradient(150deg,#18212a,#0c1014 65%)!important}
+.app{position:relative}
+h1{color:#e9edf0;font-weight:700;letter-spacing:.055em}
+button{background:#202b35;border-color:#34424e;color:#e1e5e8;box-shadow:inset 0 1px rgba(255,255,255,.045)}
+button:hover{background:#2b3844}
+button:active{background:#4b5965}
+.phase-nudge{background:#24303b;border-color:#40505c;color:#dfe6ec}
+.tempo{color:#f5f1ea}
+.track-line{background:#48525b}
+.edge{background:#b7c0c7}
+.dot{background:#f0a04c;box-shadow:0 0 18px rgba(240,160,76,.45)}
+#stop{background:#26343f;border-color:#53616a}
+#corr{background:#3b2b20;border-color:#b16f38;color:#ffbf7d}
+.buttons #sync{background:linear-gradient(180deg,#d98a3e,#bd6c2e)!important;color:#14171a!important;border-color:#e7a35d!important;box-shadow:0 5px 18px rgba(0,0,0,.28)!important}
+.buttons #sync:active{background:#ffb86d!important}
+#new{background:#263440;border-color:#52616d}
+.modal{z-index:9999!important}
+.pad{background:#19232c;border-color:#51606c}
+.credit{font-size:10px;opacity:.6;color:#9faab3;letter-spacing:.05em}
+@media(max-width:600px){
+ .app{height:100%;max-height:100%;padding-bottom:0}
+ h1{font-size:clamp(17px,4.6vw,23px);margin-bottom:4px}
+ .phase-nudge{min-height:70px;font-size:clamp(24px,7vw,32px)}
+ .bpm-row{grid-template-columns:clamp(70px,20vw,96px) 1fr clamp(70px,20vw,96px)}
+ .tempo-control{bottom:calc(49dvh + 8px)}
+ .buttons{height:calc(45dvh - max(8px,env(safe-area-inset-bottom)));bottom:max(8px,env(safe-area-inset-bottom))}
+ .credit{position:absolute!important;top:calc(41dvh - 12px);bottom:auto!important;left:0;right:0;text-align:center;z-index:1;pointer-events:none;margin:0!important}
+ .status{max-width:100%;font-size:10px}
+}
+@media(max-width:600px) and (max-height:650px){
+ .credit{top:calc(39dvh - 9px)}
+ .phase-nudge{min-height:54px}
+}
+
+h1{color:#77838d!important;font-weight:500!important;letter-spacing:.08em}
+.credit{color:#8a9298!important;opacity:.65}
+@media(max-width:600px){
+ .credit{top:auto!important;bottom:calc(45dvh + 78px)!important;position:absolute!important}
+}
+
+/* v22 palette sampled from supplied illustration */
+body{background:#4b485b!important;color:#eeeaf0!important}
+.app{color:#eeeaf0}
+.track-line{background:#777288!important}
+.edge{background:#777288!important}
+.dot{background:#fd6a02!important;box-shadow:0 0 9px 3px rgba(253,106,2,.72),0 0 26px 9px rgba(253,106,2,.35),0 0 46px 12px rgba(253,106,2,.14)!important;will-change:transform}
+button,.phase-nudge{background:#777288!important;border-color:#9892a7!important;color:#f6f3f8!important}
+button:active{background:#908a9e!important}
+#new,#stop{background:#555165!important}
+#corr{background:#665364!important;border-color:#fd6a02!important;color:#ffd4b0!important}
+.buttons #sync{background:#fd6a02!important;color:#4b485b!important;border-color:#fd6a02!important}
+.tempo{color:#f7f3f8!important}
+h1{color:#aaa5b8!important}
+.pad{background:#4b485b!important;border-color:#777288!important}
+.modal{background:rgba(25,23,34,.88)!important}
+.credit{color:#c1bbca!important}
+
+/* v23: darker original palette; consistent TAP-like corners */
+html,body{background:#17151e!important}
+body{background:#17151e!important;color:#e6e1e9!important}
+.app{color:#e6e1e9!important}
+button,.phase-nudge,.step,.buttons button,.keypad button,.pad-actions button,.round-bpm{border-radius:18px!important}
+button,.phase-nudge{background:#34313f!important;border-color:#514c5f!important;color:#e5dfeb!important}
+button:active,.phase-nudge:active{background:#514a5d!important}
+#new,#stop{background:#2b2836!important;border-color:#4a4658!important}
+#corr{background:#352a30!important;border-color:#b85b20!important;color:#ffae77!important}
+.buttons #sync{background:#e86606!important;color:#201b23!important;border-color:#f17a20!important;border-radius:18px!important}
+.track-line{background:#5b5668!important}
+.edge{background:#777083!important}
+.dot{background:#fd6a02!important;box-shadow:0 0 7px 2px rgba(253,106,2,.25),0 0 17px 5px rgba(253,106,2,.10)!important}
+h1{color:#797381!important}
+.pad{background:#25222f!important;border-color:#504a5e!important}
+.modal{background:rgba(12,10,17,.92)!important}
+.credit{color:#8f8998!important}
+
+/* v24: very subtle graphite-violet background gradient */
+html,body{background:#15131b!important}
+body{background:linear-gradient(155deg,#1c1924 0%,#16141d 44%,#100f16 100%)!important}
+/* v25: readable attribution, away from the tempo keys */
+@media(max-width:600px){
+ .credit{position:absolute!important;top:38dvh!important;bottom:auto!important;left:0!important;right:0!important;text-align:center!important;font-size:12px!important;font-weight:500!important;letter-spacing:.06em!important;color:#bcb5c6!important;opacity:1!important;z-index:2!important;pointer-events:none!important}
+}
+@media(max-width:600px) and (max-height:680px){.credit{top:36dvh!important;font-size:11px!important}}
+/* v26: dedicated footer area below controls, and accurately centered dot */
+.dot{transform:translate3d(0px,-50%,0)}
+@media(max-width:600px){
+ .buttons{bottom:calc(max(8px,env(safe-area-inset-bottom)) + 24px)!important;height:calc(45dvh - max(8px,env(safe-area-inset-bottom)) - 24px)!important}
+ .credit{position:fixed!important;top:auto!important;bottom:max(5px,env(safe-area-inset-bottom))!important;left:0!important;right:0!important;margin:0!important;z-index:4!important;font-size:10px!important;font-weight:400!important;letter-spacing:.035em!important;color:#ada5b4!important;opacity:.85!important;text-align:center!important;pointer-events:none!important}
+}
+
+/* v27: remove Android/Chrome blue touch flash without removing keyboard focus. */
+button,.tempo,.step,.phase-nudge,.pad button{-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none;touch-action:manipulation}
+button:focus:not(:focus-visible){outline:none!important;box-shadow:none}
+button:focus-visible{outline:2px solid #ef9949;outline-offset:2px}
+</style>
+</head>
+<body>
+<main class="app" id="app">
+<h1>TempoTracer</h1><div class="lock-indicator" id="lockIndicator">STABLE LOCK • OFF</div>
+<div class="bpm-row">
+<button class="phase-nudge" id="phaseBack" title="Lengthen this beat by 3%">◀◀</button>
+<div class="tempo" id="bpm" title="Click to enter BPM">120</div>
+<button class="phase-nudge" id="phaseForward" title="Shorten this beat by 3%">▶▶</button>
+</div>
+<div class="label">BPM <button id="roundBpm" class="round-bpm" title="Set internal tempo to displayed whole BPM">ROUND</button></div>
+<div class="candidate" id="candidate"></div>
+<div class="track" id="track"><div class="track-line"></div><div class="edge left"></div><div class="edge right"></div><div class="dot" id="dot"></div></div>
+<div class="tempo-control">
+<button class="step" id="plus">+</button><button class="step" id="plus2">+1</button><button class="step" id="minus2">−1</button><button class="step" id="minus">−</button>
+</div>
+<div class="buttons">
+<button id="mute">🔊 SOUND</button><button id="stop">▶ START</button><button id="corr">CORR</button>
+<button id="new">NEW</button><button id="sync">TAP</button>
+</div>
+<div class="status" id="status">TAP follows the music · NEW starts a fresh tempo</div>
+<div class="help">Space = TAP • N = NEW • click the large BPM number for direct entry</div><div class="credit">created by @felixschlagi</div>
+</main>
+
+<div class="modal" id="modal">
+<div class="pad">
+<div class="pad-title">ENTER BPM · 30–299</div>
+<div class="entry" id="entry">120</div>
+<div class="keypad" id="keypad">
+<button data-n="1">1</button><button data-n="2">2</button><button data-n="3">3</button>
+<button data-n="4">4</button><button data-n="5">5</button><button data-n="6">6</button>
+<button data-n="7">7</button><button data-n="8">8</button><button data-n="9">9</button>
+<button class="zero" data-n="0">0</button>
+</div>
+
+</div>
+</div>
+
+<script>
+(()=>{
+"use strict";
+const MIN=20,MAX=300,BASE_HISTORY=8,STABLE_HISTORY=16,ABS_SYNC_TOLERANCE_MS=5,SMART_SYNC_MAX_GAP_MS=12000;
+const q=id=>document.getElementById(id);
+const app=q("app"),bpmEl=q("bpm"),candidateEl=q("candidate"),syncBtn=q("sync"),corrBtn=q("corr"),newBtn=q("new"),stopBtn=q("stop"),muteBtn=q("mute"),minus=q("minus"),plus=q("plus"),minus2=q("minus2"),plus2=q("plus2"),status=q("status"),dot=q("dot"),track=q("track"),lockIndicator=q("lockIndicator"),roundBpm=q("roundBpm"),phaseBack=q("phaseBack"),phaseForward=q("phaseForward"),modal=q("modal"),entry=q("entry"),keypad=q("keypad");
+
+let bpm=120,running=false,muted=false,phaseStart=0;
+let audio=null,clickBuffer=null,scheduler=null,nextClickAudio=0,scheduledClicks=[],lastActualClickAudio=-Infinity;
+let tapTimes=[],intervals=[],rapidCount=0,candidateBpm=null,sequenceTimer=null;
+let lastHumanSyncPerf=null,lastHumanInputPerf=null,isolatedDirection=0,isolatedStreak=0,pendingIsolated=null;
+let mode="sync",newSequence=false,entryText="",stableLock=false,stableEvidence=0,tapSequenceStartedRunning=false;
+let lockedGrid=null, suspectCount=0, rejectedTaps=new Set(), sequenceFirstTap=null;
+
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v)), beatMs=(v=bpm)=>60000/v;
+const mean=a=>a.reduce((s,x)=>s+x,0)/a.length;
+function sd(a){if(a.length<2)return 0;let m=mean(a);return Math.sqrt(a.reduce((s,x)=>s+(x-m)**2,0)/a.length)}
+function cv(a){return a.length?sd(a)/mean(a):1}
+function display(){bpmEl.textContent=String(Math.round(bpm));/*slider removed*/void Math.round(bpm)}
+function setStatus(s){status.textContent=s}
+
+function buildClickBuffer(){
+ // Build the click once in RAM. Playback itself does no loading/decoding/buffering.
+ const duration=.04,sr=audio.sampleRate,n=Math.ceil(duration*sr);
+ const b=audio.createBuffer(1,n,sr),d=b.getChannelData(0);
+ for(let i=0;i<n;i++){
+   const t=i/sr;
+   // Same 1050 Hz sine and essentially the same 35 ms exponential decay
+   // as the previous oscillator click, rendered deterministically into samples.
+   const env=Math.exp(Math.log(.001/.18)*Math.min(t/.035,1));
+   d[i]=Math.sin(2*Math.PI*1050*t)*.18*env;
+ }
+ return b;
+}
+function ensureAudio(){
+ if(!audio){
+   audio=new (window.AudioContext||window.webkitAudioContext)();
+   clickBuffer=buildClickBuffer();
+   nextClickAudio=audio.currentTime;startScheduler()
+ }
+ if(audio.state==="suspended")audio.resume();
+}
+function makeClick(time,volume=.18,kind="metro"){
+ if(muted||!audio)return null;
+ if(!clickBuffer)clickBuffer=buildClickBuffer();
+ const source=audio.createBufferSource(),g=audio.createGain();
+ source.buffer=clickBuffer;
+ // Every click has exactly the same level and waveform, regardless of source.
+ g.gain.setValueAtTime(1,time);
+ source.connect(g);g.connect(audio.destination);source.start(time);
+ return {source,g,time,kind,cancelled:false};
+}
+function cancelFutureClicks(){
+ if(!audio)return;
+ const now=audio.currentTime;
+ for(const c of scheduledClicks){
+   if(!c.cancelled && c.time>now+.003){
+     try{c.g.gain.cancelScheduledValues(now);c.g.gain.setValueAtTime(0,now);c.source.stop(now)}catch(e){}
+     c.cancelled=true;
+   }
+ }
+ scheduledClicks=scheduledClicks.filter(c=>!c.cancelled&&c.time>=now-.1);
+}
+function scheduleMetro(time){
+ const c=makeClick(time,.18,"metro");
+ if(c)scheduledClicks.push(c);
+}
+function syncPhase(perf,skipCurrent=true){
+ phaseStart=perf;
+ if(audio){
+   cancelFutureClicks();
+   nextClickAudio=audio.currentTime+(skipCurrent?60/bpm:0);
+ }
+}
+function startSync(perf,skip=true){running=true;app.classList.add("running");stopBtn.textContent="■ STOP";syncPhase(perf,skip)}
+function phaseNudge(direction){
+ ensureAudio();
+ if(!running){setStatus("Start the metronome to shift phase");return}
+ const nowPerf=performance.now(),B=beatMs(),shift=B*.03;
+ // direction +1 = forward/right = current beat is shortened.
+ // Advancing the phase means moving the phase origin earlier.
+ phaseStart += direction>0 ? -shift : shift;
+ cancelFutureClicks();
+ const elapsed=nowPerf-phaseStart;
+ const pos=((elapsed%B)+B)%B;
+ let remaining=B-pos;
+ if(remaining<2)remaining+=B;
+ nextClickAudio=audio.currentTime+remaining/1000;
+ setStatus(direction>0 ? "Phase +3% · beat shortened" : "Phase −3% · beat lengthened");
+}
+
+function stop(){running=false;app.classList.remove("running");cancelFutureClicks();dot.style.left="0px";dot.style.transform="translate3d(0px,-50%,0)";stopBtn.textContent="▶ START";setStatus("Stopped")}
+function toggleStopStart(){ensureAudio();if(running)stop();else{startSync(performance.now(),true);setStatus(`Started at ${Math.round(bpm)} BPM`)}}
+function clearTapData(){lockedGrid=null;suspectCount=0;rejectedTaps.clear();sequenceFirstTap=null;tapTimes=[];intervals=[];stableEvidence=0;setStableLock(false);rapidCount=0;candidateBpm=null;candidateEl.textContent="";clearTimeout(sequenceTimer)}
+
+function maelzelStep(v,dir){
+ if(dir>0){if(v<60)return 2;if(v<72)return 3;if(v<120)return 4;if(v<144)return 6;if(v<208)return 8;return 12}
+ else{if(v<=60)return 2;if(v<=72)return 3;if(v<=120)return 4;if(v<=144)return 6;if(v<=208)return 8;return 12}
+}
+function stepTempo(dir,e,oneBpm=false){
+ ensureAudio();
+ const now=inputTime(e);
+ const d=oneBpm?1:maelzelStep(bpm,dir);
+ bpm=clamp(bpm+dir*d,MIN,MAX);
+ clearTapData();pendingIsolated=null;newSequence=false;display();
+ // Treat the +/- press as one plain SYNC timing event, but deliberately
+ // bypass isolated smart-correction. If playback is running, rephase it;
+ // if stopped, keep it stopped.
+ humanClick(now);phaseStart=now;
+ if(running)syncPhase(now,true);else cancelFutureClicks();
+ lastHumanInputPerf=now;lastHumanSyncPerf=now;
+ setStatus(`${Math.round(bpm)} BPM · synced`);
+}
+
+/* v14 robust beat-grid estimator.
+   Calibration from Tap Precision Lab: ~24 ms RMS, ~62 ms 95% residual.
+   We fit raw tap timestamps, not interval BPMs. A mistimed tap is therefore
+   a residual from the beat grid rather than two fake tempo changes. */
+const TAP_RMS_MS=24,TAP_P95_MS=62,MAX_WINDOW_MS=30000,MIN_REG_BEATS=3;
+
+function slope(a){
+ if(a.length<3)return 0;let n=a.length,xm=(n-1)/2,ym=mean(a),num=0,den=0;
+ for(let i=0;i<n;i++){num+=(i-xm)*(a[i]-ym);den+=(i-xm)**2}return den?num/den:0
+}
+function setStableLock(on){if(!on){lockedGrid=null;suspectCount=0}stableLock=on;lockIndicator.classList.toggle("on",on);lockIndicator.textContent=on?"STABLE LOCK • ON":"STABLE LOCK • OFF"}
+function maelzelIncrement(v){
+ if(v<60)return 2;if(v<72)return 3;if(v<120)return 4;if(v<144)return 6;if(v<208)return 8;return 12;
+}
+function robustRegression(times){
+ if(times.length<2)return null;
+ const t0=times[0],n=times.length;
+ // Timestamps may carry a beat index to preserve spacing after exclusions.
+ const xs=times.map((t,i)=>i);
+ function fit(weights){
+   let sw=0,sx=0,sy=0,sxx=0,sxy=0;
+   for(let i=0;i<n;i++){let w=weights?weights[i]:1,y=times[i]-t0;sw+=w;sx+=w*xs[i];sy+=w*y;sxx+=w*xs[i]*xs[i];sxy+=w*xs[i]*y}
+   let den=sw*sxx-sx*sx;if(!den)return null;
+   let beatMs=(sw*sxy-sx*sy)/den,intercept=(sy-beatMs*sx)/sw;
+   return {beatMs,intercept};
+ }
+ let f=fit(null);if(!f)return null;
+ // Robust Huber re-fit. ~62 ms is the measured 95% tap error; values beyond
+ // that increasingly lose leverage instead of bending the tempo line.
+ for(let pass=0;pass<3;pass++){
+   let w=[];
+   for(let i=0;i<n;i++){
+     let r=(times[i]-t0)-(f.intercept+f.beatMs*xs[i]),ar=Math.abs(r);
+     w.push(ar<=TAP_P95_MS?1:TAP_P95_MS/ar);
+   }
+   f=fit(w)||f;
+ }
+ // Stage two: exclude unmistakable isolated timing errors from the final fit.
+ // Keep the original beat indices: never compress the grid when rejecting a tap.
+ if(n>=5){
+   const threshold=Math.max(TAP_P95_MS*2,Math.abs(f.beatMs)*.22);
+   const weights=Array.from({length:n},(_,i)=>{
+     const r=Math.abs((times[i]-t0)-(f.intercept+f.beatMs*xs[i]));
+     return r>threshold?0:1;
+   });
+   const kept=weights.reduce((a,b)=>a+b,0);
+   if(kept>=4 && kept>=Math.ceil(n*.65)){
+     // Refit using only inliers; recheck residuals once to avoid one bad fit.
+     let clean=fit(weights);
+     if(clean&&clean.beatMs>0)f=clean;
+   }
+ }
+ let residuals=[],sse=0,inliers=0;
+ for(let i=0;i<n;i++){
+   let r=(times[i]-t0)-(f.intercept+f.beatMs*xs[i]);residuals.push(r);
+   if(Math.abs(r)<=TAP_P95_MS*1.5){sse+=r*r;inliers++}
+ }
+ return {beatMs:f.beatMs,bpm:60000/f.beatMs,intercept:f.intercept,residuals,
+         rms:Math.sqrt(sse/Math.max(1,inliers))};
+}
+function regressionTempo(times){let f=robustRegression(times);return f?f.bpm:null}
+function trendRate4(times){
+ // Tempo movement, expressed as BPM change over four beats.
+ if(times.length<5)return 0;
+ let half=Math.max(3,Math.ceil(times.length*.55));
+ let f1=robustRegression(times.slice(0,half)),f2=robustRegression(times.slice(-half));
+ if(!f1||!f2)return 0;
+ let centers=(times.length-half);
+ if(centers<=0)return 0;
+ return (f2.bpm-f1.bpm)*4/centers;
+}
+function maxNormalRate(v){return 4*maelzelIncrement(v)} // max 4 Maelzel increments / 4 beats
+
+function detectTempoCut(){
+ // Need at least 2–3 taps after a possible break. Test recent 2 and 3 intervals
+ // against the old beat grid. A cut is accepted only if the recent segment is
+ // internally plausible and its systematic displacement is larger than the
+ // measured tap uncertainty.
+ if(tapTimes.length<6 || (stableLock && suspectCount>0))return null;
+ const maxPost=Math.min(3,tapTimes.length-3);
+ for(let postIntervals=maxPost;postIntervals>=2;postIntervals--){
+   const cut=tapTimes.length-(postIntervals+1);
+   const oldTimes=tapTimes.slice(0,cut+1);
+   const recent=tapTimes.slice(cut);
+   if(oldTimes.length<4)continue;
+   const oldFit=robustRegression(oldTimes),newFit=robustRegression(recent);
+   if(!oldFit||!newFit)continue;
+
+   // Predict the new taps from the old grid, anchored to the same beat indices.
+   const t0=oldTimes[0],baseIndex=cut;
+   let errs=[];
+   for(let j=1;j<recent.length;j++){
+     let idx=baseIndex+j;
+     let pred=t0+oldFit.intercept+oldFit.beatMs*idx;
+     errs.push(recent[j]-pred);
+   }
+   const systematic=mean(errs);
+   const sameDirection=errs.filter(x=>Math.sign(x)===Math.sign(systematic)&&Math.abs(x)>TAP_RMS_MS).length;
+   const bpmJump=Math.abs(newFit.bpm-oldFit.bpm);
+   const jumpFloor=Math.max(.35,maelzelIncrement(oldFit.bpm)*.12);
+   // 2 taps require stronger evidence; 3 taps can confirm a smaller jump.
+   const errNeed=postIntervals===2?TAP_P95_MS*1.25:TAP_P95_MS*.80;
+   const coherent=sameDirection>=Math.max(1,errs.length-1);
+   const recentClean=newFit.rms<=TAP_P95_MS;
+   if(coherent&&recentClean&&Math.abs(systematic)>=errNeed&&bpmJump>=jumpFloor)
+     return {cut,oldBpm:oldFit.bpm,newBpm:newFit.bpm};
+ }
+ return null;
+}
+function chooseRegressionWindow(){
+ if(tapTimes.length<MIN_REG_BEATS+1)return tapTimes.slice();
+ const last=tapTimes[tapTimes.length-1];
+ let available=tapTimes.filter(t=>last-t<=(stableLock?MAX_WINDOW_MS:8000));
+ if(available.length<MIN_REG_BEATS+1)available=tapTimes.slice(-(MIN_REG_BEATS+1));
+
+ // Start with all available history (max 8 s). Shorten only when a coherent
+ // tempo slope demands faster response. The stronger the rate, the shorter.
+ const rate=Math.abs(trendRate4(available));
+ const cap=maxNormalRate(bpm);
+ let targetMs=stableLock?MAX_WINDOW_MS:8000;
+ if(rate>cap*.75)targetMs=2000;
+ else if(rate>cap*.50)targetMs=3000;
+ else if(rate>cap*.25)targetMs=5000;
+
+ let w=tapTimes.filter(t=>last-t<=targetMs);
+ if(w.length<MIN_REG_BEATS+1)w=tapTimes.slice(-(MIN_REG_BEATS+1));
+ return w;
+}
+function updateStableLockFromFit(times,fit){
+ if(!fit||times.length<4)return;
+ if(stableLock && suspectCount>0)return;
+ const rate=Math.abs(trendRate4(times));
+ // Stable is descriptive only now; estimator is regression in every mode.
+ const qualifies=times[times.length-1]-times[0]>=2200 &&
+               fit.rms<=TAP_P95_MS*1.25 && rate<=maelzelIncrement(fit.bpm)*1.5;
+ if(qualifies){
+   stableEvidence++;
+   if(!stableLock && stableEvidence>=2)setStableLock(true);
+   if(stableLock && !lockedGrid){lockedGrid={anchor:times[0]+fit.intercept,period:fit.beatMs}}
+ }else if(!stableLock)stableEvidence=0;
+}
+function calculateCandidate(){
+ if(tapTimes.length<2)return null;
+ const cut=detectTempoCut();
+ if(cut){
+   tapTimes=tapTimes.slice(cut.cut);
+   intervals=[];
+   for(let i=1;i<tapTimes.length;i++)intervals.push(tapTimes[i]-tapTimes[i-1]);
+   stableEvidence=0;setStableLock(false);
+   setStatus(`Tempo cut detected · ${Math.round(cut.oldBpm)} → ${Math.round(cut.newBpm)} BPM`);
+ }
+ if(tapTimes.length<3){
+   // NEW still needs to be able to start on tap 2: two taps provide a provisional
+   // grid; from 3 intervals onward all normal estimates use robust regression.
+   if(tapTimes.length===2)return clamp(60000/(tapTimes[1]-tapTimes[0]),MIN,MAX);
+   return null;
+ }
+ if(tapTimes.length===3)return clamp(60000/(tapTimes[2]-tapTimes[1]),MIN,MAX);
+ let w=chooseRegressionWindow();
+ // From tap 3 onward the first input is NEVER used in estimation.
+ // Retain its beat slot using extrapolation from taps 2 and 3.
+ if(sequenceFirstTap!==null && w.length>=3 && w[0]===sequenceFirstTap)w=w.slice(1);
+ // During a tentative disturbance, do not let those taps pull the long-term fit.
+ if(lockedGrid && suspectCount>0){
+   w=w.map(t=>rejectedTaps.has(t)?lockedGrid.anchor+(Math.round((t-lockedGrid.anchor)/lockedGrid.period))*lockedGrid.period:t);
+ }
+ const fit=robustRegression(w);
+ if(!fit)return null;
+ const rate=Math.abs(trendRate4(w)),cap=maxNormalRate(fit.bpm);
+ // Regression rates above the physical prior are not trusted as musical trend:
+ // shorten to the minimum window and let robust residual weighting reject bad taps.
+ let finalFit=fit;
+ if(rate>cap){
+   const short=tapTimes.slice(-(MIN_REG_BEATS+1));
+   finalFit=robustRegression(short)||fit;
+ }
+ updateStableLockFromFit(w,finalFit);
+ return clamp(finalFit.bpm,MIN,MAX);
+}
+
+function phaseError(perf){let B=beatMs(),elapsed=perf-phaseStart,n=Math.round(elapsed/B);return elapsed-n*B}
+
+/* Isolated sync correction. Any proposed update under 1% is ignored. */
+function isolatedCorrection(perf,previousHumanInput){
+ if(!running||lastHumanSyncPerf===null)return {old:bpm,new:bpm,error:0,reason:"none"};
+ let old=bpm,err=phaseError(perf),B=beatMs();
+ if(previousHumanInput===null||perf-previousHumanInput>SMART_SYNC_MAX_GAP_MS)return {old,new:old,error:err,reason:"old"};
+ if(Math.abs(err)<=ABS_SYNC_TOLERANCE_MS)return {old,new:old,error:err,reason:"tolerance"};
+ if(Math.abs(err)>B/3)return {old,new:old,error:err,reason:"far"};
+ stableEvidence=0;setStableLock(false);
+ let since=perf-lastHumanSyncPerf,sign=err>0?-1:1;if(sign===isolatedDirection)isolatedStreak++;else{isolatedDirection=sign;isolatedStreak=1}
+ let correction=0;
+ if(since<=10000){let beats=Math.max(1,since/B),estimatedPeriod=B+err/beats,inferred=60000/estimatedPeriod;correction=(inferred-old)*.90}
+ else{let fraction=clamp(Math.abs(err)/B,0,.25),base=Math.max(.12,old*fraction*.055);correction=sign*base*Math.min(1.8,1+.2*(isolatedStreak-1))}
+ correction=clamp(correction,-2.5,2.5);bpm=clamp(old+correction,MIN,MAX);display();return {old,new:bpm,error:err,reason:"corrected"}
+}
+
+function humanClick(nowPerf){
+ ensureAudio();
+ // WebAudio-clock based: if a metronome click ACTUALLY occurred just before this tap, suppress tap click.
+ const nowA=audio.currentTime,windowSec=Math.min(.100,(beatMs()*.20)/1000);
+ const recent=scheduledClicks.filter(c=>!c.cancelled&&c.kind==="metro"&&c.time<=nowA+.008).sort((a,b)=>b.time-a.time)[0];
+ const suppress=recent && nowA-recent.time>=-.008 && nowA-recent.time<windowSec;
+ if(!suppress)makeClick(nowA,.22,"human");
+ return !!suppress;
+}
+function acquisitionGap(){return Math.max(1500,2*beatMs(candidateBpm||bpm))}
+function armSequence(){clearTimeout(sequenceTimer);sequenceTimer=setTimeout(()=>{rapidCount=0;pendingIsolated=null;newSequence=false},acquisitionGap())}
+function flash(btn){btn.classList.add("flash");setTimeout(()=>btn.classList.remove("flash"),75)}
+
+
+function inputTime(e){
+ if(!e || !Number.isFinite(e.timeStamp)) return performance.now();
+ let t=e.timeStamp;
+ // Some older engines expose epoch-based timestamps instead of performance time.
+ if(t>1e12 && performance.timeOrigin) t-=performance.timeOrigin;
+ // Reject clearly incompatible values rather than corrupting tap timing.
+ if(Math.abs(t-performance.now())>60000) return performance.now();
+ return t;
+}
+
+function registerSync(e){
+ const now=inputTime(e),previousHumanInput=lastHumanInputPerf;lastHumanInputPerf=now;ensureAudio();flash(syncBtn);
+ const paused=!tapTimes.length||now-tapTimes[tapTimes.length-1]>acquisitionGap();
+ if(paused){
+   const wasRunning=running;
+   clearTapData();rapidCount=1;tapTimes=[now];sequenceFirstTap=now;tapSequenceStartedRunning=wasRunning;
+   const suppressed=humanClick(now);
+   const corr={old:bpm,new:bpm,reason:"tap"};
+   pendingIsolated={oldBpm:corr.old,correctedBpm:corr.new};
+   if(wasRunning)startSync(now,true);else{phaseStart=now;cancelFutureClicks()}
+   lastHumanSyncPerf=now;
+   candidateEl.textContent=corr.reason==="corrected"?`smart correction ${Math.round(corr.old)} → ${Math.round(corr.new)} BPM`:corr.reason==="tolerance"?"within ±5 ms · tempo unchanged":corr.reason==="old"?"sync only · previous input >12 s":"";
+   setStatus(suppressed?"Synced · close tap click suppressed":"Synced");
+   armSequence();return;
+ }
+ if(rapidCount===1&&pendingIsolated){bpm=pendingIsolated.oldBpm;display();pendingIsolated=null}
+ addRapidTap(now,syncBtn);
+}
+
+function registerCorr(e){
+ const now=inputTime(e),previousHumanInput=lastHumanInputPerf;
+ ensureAudio();flash(corrBtn);
+ // Apply the old smart-correction formula only within 25% of the current beat.
+ const err=phaseError(now),B=beatMs(),old=bpm;
+ let result={old,new:old,reason:"far"};
+ if(running && Math.abs(err)<=B/3){
+   result=isolatedCorrection(now,previousHumanInput);
+ }
+ lastHumanInputPerf=now;
+ clearTapData();pendingIsolated=null;newSequence=false;
+ humanClick(now);
+ if(running)startSync(now,true);else phaseStart=now;
+ lastHumanSyncPerf=now;
+ setStatus(result.reason==="corrected"?`CORR ${old.toFixed(1)} → ${bpm.toFixed(1)} BPM`:"CORR · phase synced");
+}
+function registerNew(e){
+ const now=inputTime(e);lastHumanInputPerf=now;ensureAudio();flash(newBtn);
+ if(!newSequence){
+   // Explicit NEW: old tempo is known obsolete. Stop it immediately and erase all old evidence.
+   running=false;app.classList.remove("running");cancelFutureClicks();clearTapData();pendingIsolated=null;
+   newSequence=true;rapidCount=1;tapTimes=[now];sequenceFirstTap=now;tapSequenceStartedRunning=false;makeClick(audio.currentTime,.22,"human");phaseStart=now;
+   candidateEl.textContent="new tempo · tap 1 more time";
+   setStatus("New tempo started · 1 more tap");armSequence();return;
+ }
+ addRapidTap(now,newBtn);
+}
+function addRapidTap(now,sourceBtn){
+ let prev=tapTimes[tapTimes.length-1],delta=now-prev;
+ // if NEW/SYNC sequence itself has paused >2 beats, restart its evidence
+ if(prev!==undefined && delta>acquisitionGap()){
+   if(sourceBtn===newBtn){newSequence=false;registerNew({timeStamp:now})}else registerSync({timeStamp:now});return;
+ }
+ tapTimes.push(now);intervals.push(delta);
+ if(tapTimes.length===1)sequenceFirstTap=now;
+ if(stableLock && lockedGrid){
+   const expected=lockedGrid.anchor+Math.round((now-lockedGrid.anchor)/lockedGrid.period)*lockedGrid.period;
+   const error=now-expected,threshold=Math.max(42,TAP_RMS_MS*1.7);
+   if(Math.abs(error)>threshold){
+     suspectCount++;
+     rejectedTaps.add(now);
+     if(suspectCount>=3){
+       // Three deviations: confirmed change. Drop the old lock and allow a CUT.
+       setStableLock(false);rejectedTaps.clear();stableEvidence=0;
+       setStatus("Tempo change confirmed · adapting");
+     }
+   }else if(suspectCount>0){
+     // Third tap back on the original grid: disregard the preceding two errors.
+     suspectCount=0;
+     setStatus("Original beat confirmed · deviations ignored");
+   }
+ }
+ // v14 keeps raw timestamps for an adaptive regression window, capped by time
+ // rather than a fixed number of beats. Retain a small margin beyond 8 s for
+ // cut detection and window selection.
+ const keepAfter=now-(MAX_WINDOW_MS+2500);
+ while(tapTimes.length>2&&tapTimes[1]<keepAfter){
+   const removed=tapTimes.shift();rejectedTaps.delete(removed);
+   if(intervals.length)intervals.shift();
+ }
+ rapidCount=tapTimes.length;
+ humanClick(now);
+ candidateBpm=calculateCandidate();
+ if(stableLock && suspectCount>0)candidateBpm=bpm;
+ if(candidateBpm!==null)candidateEl.textContent=`tap estimate ${Math.round(candidateBpm)} BPM${stableLock?" · STABLE":""}`;
+ // During SYNC, keep rephasing; NEW starts its fresh metronome on tap 2.
+ if(sourceBtn===syncBtn&&running&&tapSequenceStartedRunning)syncPhase(now,true);
+ lastHumanSyncPerf=now;
+ const tapsNeeded=sourceBtn===newBtn?2:3; // TAP applies on the third input
+ if(rapidCount>=tapsNeeded&&candidateBpm!==null){
+   bpm=clamp(candidateBpm,MIN,MAX);display();startSync(now,true);
+   setStatus(`Tempo applied: ${Math.round(bpm)} BPM`);
+ }else{
+   const left=tapsNeeded-rapidCount;
+   setStatus(`${left} more tap${left===1?"":"s"} to apply tempo`);
+ }
+ if(sourceBtn===newBtn)newSequence=true;
+ armSequence();
+}
+
+let trackWidth=track.clientWidth;
+window.addEventListener("resize",()=>{trackWidth=track.clientWidth});
+function animate(){
+ if(running){let p=(performance.now()-phaseStart)/beatMs(),i=Math.floor(p),f=p-i,t=i%2===0?f:1-f,r=dot.offsetWidth/2;dot.style.transform=`translate3d(${t*Math.max(0,trackWidth-2*r)}px,-50%,0)`}
+ requestAnimationFrame(animate)
+}
+requestAnimationFrame(animate);
+
+function startScheduler(){
+ scheduler=setInterval(()=>{
+   if(!running||!audio)return;
+   const sec=60/bpm,now=audio.currentTime;
+   scheduledClicks=scheduledClicks.filter(c=>!c.cancelled&&c.time>now-.25);
+   if(nextClickAudio<now-.08)nextClickAudio=now+sec;
+   while(nextClickAudio<now+.075){scheduleMetro(nextClickAudio);nextClickAudio+=sec}
+ },20)
+}
+
+/* Controls */
+phaseBack.addEventListener("pointerdown",e=>{e.preventDefault();phaseNudge(-1)});
+phaseForward.addEventListener("pointerdown",e=>{e.preventDefault();phaseNudge(1)});
+roundBpm.addEventListener("click",e=>{
+ e.stopPropagation();ensureAudio();
+ bpm=clamp(Math.round(bpm),MIN,MAX);display();clearTapData();pendingIsolated=null;newSequence=false;
+ if(running)syncPhase(performance.now(),true);
+ setStatus(`Rounded to ${Math.round(bpm)} BPM`);
+});
+plus.addEventListener("pointerdown",e=>{e.preventDefault();stepTempo(1,e,false)});minus.addEventListener("pointerdown",e=>{e.preventDefault();stepTempo(-1,e,false)});plus2.addEventListener("pointerdown",e=>{e.preventDefault();stepTempo(1,e,true)});minus2.addEventListener("pointerdown",e=>{e.preventDefault();stepTempo(-1,e,true)});
+syncBtn.addEventListener("pointerdown",e=>{e.preventDefault();registerSync(e)});
+corrBtn.addEventListener("pointerdown",e=>{e.preventDefault();registerCorr(e)});
+newBtn.addEventListener("pointerdown",e=>{e.preventDefault();registerNew(e)});
+stopBtn.addEventListener("click",toggleStopStart);
+muteBtn.addEventListener("click",()=>{ensureAudio();muted=!muted;muteBtn.textContent=muted?"🔇 MUTED":"🔊 SOUND"});
+
+/* Direct integer BPM keypad: automatic entry, 30–299.
+   First digit 1 or 2 => wait for two more digits.
+   First digit 3–9 => wait for one more digit. */
+function openPad(){entryText="";entry.textContent="—";modal.classList.add("open")}
+function closePad(){modal.classList.remove("open")}
+function applyTypedBpm(){
+ const v=parseInt(entryText,10);
+ if(!Number.isFinite(v)||v<30||v>299){entryText="";entry.textContent="30–299";return}
+ ensureAudio();bpm=v;clearTapData();pendingIsolated=null;newSequence=false;display();
+ startSync(performance.now(),true);setStatus(`${v} BPM`);closePad()
+}
+function typeBpmDigit(n){
+ if(!/^[0-9]$/.test(n))return;
+ if(entryText.length===0){
+   if(n==="1"||n==="2"){entryText=n;entry.textContent=entryText;return}
+   if(/[3-9]/.test(n)){entryText=n;entry.textContent=entryText;return}
+   return;
+ }
+ const needed=(entryText[0]==="1"||entryText[0]==="2")?3:2;
+ if(entryText.length<needed){entryText+=n;entry.textContent=entryText}
+ if(entryText.length===needed)applyTypedBpm()
+}
+bpmEl.addEventListener("click",openPad);
+keypad.addEventListener("click",e=>{const n=e.target.dataset.n;if(n!==undefined)typeBpmDigit(n)});
+modal.addEventListener("pointerdown",e=>{if(e.target===modal)closePad()});
+
+document.addEventListener("keydown",e=>{
+ if(modal.classList.contains("open")){
+   if(/^[0-9]$/.test(e.key))typeBpmDigit(e.key);
+   else if(e.key==="Escape")closePad();
+   return
+ }
+ if(e.code==="Space"&&!e.repeat){e.preventDefault();registerSync(e)}
+ if(e.key.toLowerCase()==="n"&&!e.repeat)registerNew(e)
+});
+display();
+})();
+</script>
+<script>if("serviceWorker" in navigator && location.protocol !== "file:"){window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}));}</script>
+</body>
+</html>
